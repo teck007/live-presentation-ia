@@ -1,0 +1,68 @@
+import type { TranscribeResponse } from "../types";
+
+// Base del backend, configurable con VITE_API_BASE_URL.
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL?.trim() || "http://localhost:8000";
+
+// Tiempo maximo de espera para la transcripcion (180 segundos).
+const TIMEOUT_MS = 180_000;
+
+/** Extrae el mensaje de error de una respuesta JSON del backend. */
+async function extractDetail(response: Response): Promise<string> {
+  try {
+    const data = await response.json();
+    const detail = (data as { detail?: unknown }).detail;
+    if (typeof detail === "string" && detail.trim()) return detail;
+    return JSON.stringify(data);
+  } catch {
+    try {
+      const text = await response.text();
+      return text || `Error ${response.status}`;
+    } catch {
+      return `Error ${response.status}`;
+    }
+  }
+}
+
+/**
+ * Envia un blob de audio al backend para transcribir.
+ * Usa FormData con el campo "file" y aborta a los 180 segundos.
+ */
+export async function transcribeAudio(
+  blob: Blob,
+  filename: string,
+): Promise<TranscribeResponse> {
+  const formData = new FormData();
+  formData.append("file", blob, filename);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/transcribe`, {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const detail = await extractDetail(response);
+      throw new Error(`Error ${response.status}: ${detail}`);
+    }
+    const data = (await response.json()) as TranscribeResponse;
+    return {
+      text: typeof data.text === "string" ? data.text : "",
+      sessionId: data.sessionId ?? null,
+      audioDurationMs: data.audioDurationMs ?? null,
+      turns: Array.isArray(data.turns) ? data.turns : [],
+    };
+  } catch (error) {
+    // Mensaje claro si el pedido fue abortado por timeout.
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(
+        "La transcripción tardó demasiado (180s) y fue cancelada. Prueba con un audio más corto.",
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}

@@ -1,0 +1,2 @@
+-- TODO: tablas presentations, credits, contacts
+-- Mantener versionado desde día 1, sin lógica aún.
