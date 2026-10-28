@@ -1,1 +1,47 @@
 @import "tailwindcss";
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  background-color: var(--color-slate-950);
+  color: #fff;
+}
+
+/* Thin scrollbars for sidebar and thumbnail rows */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(71 85 105) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(71 85 105);
+  border-radius: 9999px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Single-stage slide transitions */
+.slide-enter-active,
+.slide-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.slide-enter-from {
+  opacity: 0;
+  transform: translateX(24px);
+}
+.slide-leave-to {
+  opacity: 0;
+  transform: translateX(-24px);
+}
+
+/* Visible keyboard focus */
+:focus-visible {
+  outline: 2px solid var(--color-emerald-400);
+  outline-offset: 2px;
+}

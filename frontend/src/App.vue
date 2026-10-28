@@ -1,179 +1,216 @@
 <template>
-  <main
-    class="mx-auto max-w-2xl px-4 py-8 text-center font-sans min-h-screen bg-neutral-50 text-slate-800 antialiased"
-  >
-    <h1 class="text-3xl font-bold tracking-tight">
-      Transcripción de voz en vivo
-    </h1>
-    <p class="mt-2 text-neutral-500">
-      Habla y mira el texto en tiempo real, o graba por lotes como alternativa.
-    </p>
+  <div class="flex h-screen bg-slate-950 text-white">
+    <!-- Desktop sidebar -->
+    <AppSidebar
+      class="hidden md:flex"
+      :status-label="statusLabel"
+      :status-pill-class="statusPillClass"
+      :live-active="liveActive"
+      :clear-disabled="liveActive || (live.finalItems.value.length === 0 && !live.partialText.value)"
+      :presentation-topic="presentationTopic"
+      :notice="live.notice.value"
+      :error="live.error.value"
+      :prefilter-enabled="live.prefilterEnabled.value"
+      :prefilter-threshold="live.prefilterThreshold.value"
+      :prefilter-level="live.prefilterLevel.value"
+      :partial-text="live.partialText.value"
+      :server-paused="live.serverPaused.value"
+      :final-items="live.finalItems.value"
+      :last-filtered="!!presentation.lastFiltered.value"
+      :can-transcribe="canTranscribe"
+      :batch-loading="loading"
+      :result-text="resultText"
+      :result-keywords="resultKeywords"
+      :is-empty-warning="isEmptyWarning"
+      :api-error="apiError"
+      @start-live="handleStartLive"
+      @stop-live="handleStopLive"
+      @clear-live="handleClearLive"
+      @update:topic="presentationTopic = $event; presentation.setTopic($event)"
+      @prefilter-enabled="live.setPrefilterEnabled($event)"
+      @prefilter-threshold="live.setPrefilterThreshold($event)"
+      @batch-transcribe="handleTranscribe"
+    >
+      <template #recorder>
+        <AudioRecorder
+          :is-recording="isRecording"
+          :audio-url="audioUrl"
+          :elapsed="elapsed"
+          :recorder-error="recorderError"
+          @start="start"
+          @stop="stop"
+          @clear="handleClear"
+        />
+      </template>
+      <template #history>
+        <TranscriptHistory :items="history" />
+      </template>
+    </AppSidebar>
 
-    <section class="mt-6 rounded-lg border border-neutral-200 bg-white p-4 text-left shadow-sm">
-      <div class="flex flex-wrap items-center gap-3">
-        <h2 class="text-lg font-semibold">Transcripción en vivo</h2>
-        <span
-          class="rounded-full px-3 py-1 text-sm font-medium"
-          :class="statusPillClass"
-          role="status"
+    <!-- Mobile sidebar drawer -->
+    <div v-if="sidebarOpen" class="fixed inset-0 z-40 md:hidden">
+      <div class="absolute inset-0 bg-black/60" @click="sidebarOpen = false"></div>
+      <AppSidebar
+        class="absolute inset-y-0 left-0 flex rounded-r-3xl"
+        :status-label="statusLabel"
+        :status-pill-class="statusPillClass"
+        :live-active="liveActive"
+        :clear-disabled="liveActive || (live.finalItems.value.length === 0 && !live.partialText.value)"
+        :presentation-topic="presentationTopic"
+        :notice="live.notice.value"
+        :error="live.error.value"
+        :prefilter-enabled="live.prefilterEnabled.value"
+        :prefilter-threshold="live.prefilterThreshold.value"
+        :prefilter-level="live.prefilterLevel.value"
+        :partial-text="live.partialText.value"
+        :server-paused="live.serverPaused.value"
+        :final-items="live.finalItems.value"
+        :last-filtered="!!presentation.lastFiltered.value"
+        :can-transcribe="canTranscribe"
+        :batch-loading="loading"
+        :result-text="resultText"
+        :result-keywords="resultKeywords"
+        :is-empty-warning="isEmptyWarning"
+        :api-error="apiError"
+        @start-live="handleStartLive"
+        @stop-live="handleStopLive"
+        @clear-live="handleClearLive"
+        @update:topic="presentationTopic = $event; presentation.setTopic($event)"
+        @prefilter-enabled="live.setPrefilterEnabled($event)"
+        @prefilter-threshold="live.setPrefilterThreshold($event)"
+        @batch-transcribe="handleTranscribe"
+      >
+        <template #recorder>
+          <AudioRecorder
+            :is-recording="isRecording"
+            :audio-url="audioUrl"
+            :elapsed="elapsed"
+            :recorder-error="recorderError"
+            @start="start"
+            @stop="stop"
+            @clear="handleClear"
+          />
+        </template>
+        <template #history>
+          <TranscriptHistory :items="history" />
+        </template>
+      </AppSidebar>
+    </div>
+
+    <!-- Stage -->
+    <main class="flex-1 overflow-y-auto bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+      <!-- Mobile top bar -->
+      <div class="sticky top-0 z-30 flex items-center gap-3 border-b border-white/10 bg-slate-950/80 p-3 backdrop-blur md:hidden">
+        <button
+          type="button"
+          aria-label="Abrir menú"
+          class="rounded-xl border border-white/10 bg-white/5 p-2 text-slate-200"
+          @click="sidebarOpen = true"
         >
+          <svg class="size-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M3 5h14v2H3zM3 9h14v2H3zM3 13h14v2H3z"/></svg>
+        </button>
+        <p class="text-sm font-semibold">Live Presentation</p>
+        <span class="ml-auto rounded-full px-3 py-1 text-xs font-medium" :class="statusPillClass" role="status">
           {{ statusLabel }}
         </span>
       </div>
 
-      <div class="mt-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          class="rounded-lg bg-green-600 px-5 py-2.5 text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-green-300"
-          :disabled="liveActive"
-          @click="live.start()"
-        >
-          Iniciar en vivo
-        </button>
-        <button
-          type="button"
-          class="rounded-lg bg-neutral-600 px-5 py-2.5 text-white transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:bg-neutral-300"
-          :disabled="!liveActive"
-          @click="live.stop()"
-        >
-          Detener
-        </button>
-        <button
-          type="button"
-          class="rounded-lg bg-transparent px-4 py-2.5 text-neutral-500 transition hover:text-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
-          :disabled="liveActive || (live.finalItems.value.length === 0 && !live.partialText.value)"
-          @click="live.clearLive()"
-        >
-          Limpiar
-        </button>
-      </div>
+      <div class="mx-auto max-w-6xl px-4 py-6 md:px-8 md:py-10">
+        <header class="text-center">
+          <h1 class="text-2xl font-bold tracking-tight md:text-3xl">Presentación en vivo</h1>
+          <p class="mt-1 text-sm text-slate-400">
+            Habla y mira los slides generarse en tiempo real.
+          </p>
+        </header>
 
-      <div class="mt-4 rounded-md border border-neutral-200 bg-neutral-50 p-3">
-        <label class="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
-          <input
-            type="checkbox"
-            class="size-4 accent-green-600"
-            :checked="live.prefilterEnabled.value"
-            @change="live.setPrefilterEnabled(($event.target as HTMLInputElement).checked)"
+        <div class="mt-6">
+          <SlideCanvas
+            :slides="presentation.slides.value"
+            :pending="presentation.pending.value > 0"
+            :error="presentation.error.value"
           />
-          Reducción de ruido
-        </label>
-        <label class="mt-3 block text-sm text-slate-600">
-          Cercanía
-          <span class="block text-xs text-neutral-400">Más a la derecha = solo muy cercano</span>
-          <input
-            type="range"
-            min="0.01"
-            max="0.05"
-            step="0.005"
-            class="mt-1 w-full accent-green-600"
-            :value="live.prefilterThreshold.value"
-            :disabled="!live.prefilterEnabled.value"
-            @input="live.setPrefilterThreshold(Number(($event.target as HTMLInputElement).value))"
-          />
-        </label>
-        <div class="mt-2 flex items-center gap-2">
-          <span class="text-xs text-neutral-400">Nivel</span>
-          <div class="h-2 flex-1 overflow-hidden rounded-full bg-neutral-200" role="meter" aria-label="Nivel de micrófono">
-            <div
-              class="h-full rounded-full bg-green-500 transition-[width]"
-              :style="{ width: `${Math.min(100, Math.round(live.prefilterLevel.value * 400))}%` }"
-            ></div>
-          </div>
+        </div>
+
+        <!-- Subtitle bar below stage -->
+        <div
+          v-if="live.partialText.value"
+          class="mx-auto mt-4 w-full max-w-5xl rounded-2xl border-l-4 border-blue-400 bg-white/5 p-4 text-left italic text-slate-300"
+          role="status"
+          aria-live="polite"
+        >
+          {{ live.partialText.value }}<span class="animate-pulse">…</span>
+        </div>
+        <div
+          v-else-if="lastTurnKeywords.length"
+          class="mx-auto mt-4 flex w-full max-w-5xl flex-wrap items-center gap-2"
+          aria-live="polite"
+        >
+          <span class="text-xs uppercase tracking-widest text-slate-500">Último turno:</span>
+          <span
+            v-for="(keyword, kindex) in lastTurnKeywords"
+            :key="`${keyword}-${kindex}`"
+            class="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-slate-300"
+          >
+            {{ keyword }}
+          </span>
         </div>
       </div>
-
-      <div v-if="live.notice.value" class="mt-3 rounded-md bg-blue-50 p-3 text-sm text-blue-800" role="status">
-        {{ live.notice.value }}
-      </div>
-      <div v-if="live.error.value" class="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-700" role="alert">
-        {{ live.error.value }}
-        <span class="mt-1 block text-red-600">Puedes usar el grabador por lotes de abajo como alternativa.</span>
-      </div>
-
-      <div
-        v-if="live.partialText.value"
-        class="mt-3 rounded-md border-l-4 border-blue-400 bg-neutral-100 p-3 text-left text-neutral-600 italic"
-        role="status"
-        aria-live="polite"
-      >
-        {{ live.partialText.value }}<span class="animate-pulse">…</span>
-      </div>
-      <p v-else-if="liveActive" class="mt-3 text-sm text-neutral-400">
-        {{ live.serverPaused.value ? "En pausa por silencio prolongado. Habla para retomar." : "Escuchando… habla para transcribir." }}
-      </p>
-
-      <ul v-if="live.finalItems.value.length > 0" class="mt-3 space-y-2 text-left">
-        <li
-          v-for="(item, index) in live.finalItems.value"
-          :key="`${item.sessionId ?? 'turn'}-${index}`"
-          class="rounded-md bg-green-50 p-3 text-green-800"
-        >
-          {{ item.text }}
-        </li>
-      </ul>
-    </section>
-
-    <section class="mt-6 rounded-lg border border-neutral-200 bg-white p-4 text-left shadow-sm">
-      <h2 class="text-lg font-semibold">Grabador por lotes (alternativa)</h2>
-      <p class="mt-1 text-sm text-neutral-500">
-        Graba tu voz con el micrófono y presiona Transcribir para obtener el
-        texto en español.
-      </p>
-
-      <AudioRecorder
-        :is-recording="isRecording"
-        :audio-url="audioUrl"
-        :elapsed="elapsed"
-        :recorder-error="recorderError"
-        @start="start"
-        @stop="stop"
-        @clear="handleClear"
-      />
-
-      <div class="mt-4">
-        <button
-          type="button"
-          class="rounded-lg bg-blue-600 px-6 py-3 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-          :disabled="!blob || loading"
-          @click="handleTranscribe"
-        >
-          {{ loading ? "Transcribiendo..." : "Transcribir" }}
-        </button>
-      </div>
-
-      <div v-if="loading" class="mt-4 flex items-center justify-center gap-2" role="status">
-        <span
-          class="inline-block size-[18px] animate-spin rounded-full border-[3px] border-neutral-300 border-t-blue-600"
-          aria-hidden="true"
-        ></span>
-        Transcribiendo...
-      </div>
-
-      <div v-if="resultText" class="mt-4 rounded-md bg-green-50 p-3 text-left text-green-800" role="status">
-        {{ resultText }}
-      </div>
-      <div v-if="isEmptyWarning" class="mt-4 rounded-md bg-yellow-50 p-3 text-yellow-800" role="status">
-        Transcripción vacía.
-      </div>
-      <div v-if="apiError" class="mt-4 rounded-md bg-red-50 p-3 text-red-700" role="alert">{{ apiError }}</div>
-    </section>
-
-    <TranscriptHistory :items="history" />
-  </main>
+    </main>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
+import AppSidebar from "./components/AppSidebar.vue";
 import AudioRecorder from "./components/AudioRecorder.vue";
+import SlideCanvas from "./components/SlideCanvas.vue";
 import TranscriptHistory from "./components/TranscriptHistory.vue";
 import { transcribeAudio } from "./api/transcribe";
+import { useLivePresentation } from "./composables/useLivePresentation";
 import { useRecorder } from "./composables/useRecorder";
 import { useRealtimeTranscription } from "./composables/useRealtimeTranscription";
 import type { TranscriptItem } from "./types";
 
 // Sesion de transcripcion en vivo (realtime WS).
 const live = useRealtimeTranscription();
+
+// MVP presentación: topic + cola de turnos finales -> slides JSON.
+const presentationTopic = ref("");
+const presentation = useLivePresentation();
+
+// Mobile drawer state (visual only).
+const sidebarOpen = ref(false);
+
+watch(presentationTopic, (v) => presentation.setTopic(v));
+
+let seenFinalCount = 0;
+watch(
+  () => live.finalItems.value.length,
+  () => {
+    const items = live.finalItems.value;
+    // finalItems usa unshift: los nuevos están al inicio.
+    const fresh = items.slice(0, items.length - seenFinalCount);
+    seenFinalCount = items.length;
+    for (let i = fresh.length - 1; i >= 0; i--) {
+      presentation.queueTranscript(fresh[i]);
+    }
+  },
+);
+
+async function handleStartLive() {
+  presentation.setTopic(presentationTopic.value);
+  await live.start();
+}
+
+function handleStopLive() {
+  live.stop();
+}
+
+function handleClearLive() {
+  live.clearLive();
+  seenFinalCount = 0;
+  presentation.clear();
+}
 
 const liveActive = computed(
   () =>
@@ -217,6 +254,9 @@ const statusPillClass = computed(() => {
   }
 });
 
+// Keywords del último turno final para la barra de subtítulos.
+const lastTurnKeywords = computed(() => live.finalItems.value[0]?.keywords ?? []);
+
 // Estado de grabacion por lotes provisto por el composable (fallback).
 const {
   isRecording,
@@ -233,6 +273,9 @@ const {
 // Estado de la transcripcion y del historial (mas reciente primero).
 const loading = ref(false);
 const resultText = ref("");
+const resultCleaned = ref("");
+const resultTopic = ref("");
+const resultKeywords = ref<string[]>([]);
 const isEmptyWarning = ref(false);
 const apiError = ref<string | null>(null);
 const history = ref<TranscriptItem[]>([]);
@@ -242,6 +285,9 @@ const canTranscribe = computed(() => blob.value !== null && !loading.value);
 function handleClear() {
   clear();
   resultText.value = "";
+  resultCleaned.value = "";
+  resultTopic.value = "";
+  resultKeywords.value = [];
   isEmptyWarning.value = false;
   apiError.value = null;
 }
@@ -251,15 +297,25 @@ async function handleTranscribe() {
   if (!canTranscribe.value || !blob.value) return;
   loading.value = true;
   resultText.value = "";
+  resultCleaned.value = "";
+  resultTopic.value = "";
+  resultKeywords.value = [];
   isEmptyWarning.value = false;
   apiError.value = null;
   try {
     const filename = `grabacion.${suggestedExtension()}`;
     const data = await transcribeAudio(blob.value, filename);
-    const text = data.text.trim();
-    history.value.unshift({ text, sessionId: data.sessionId ?? null });
-    if (text) {
-      resultText.value = text;
+    const raw = data.text.trim();
+    const cleaned = (data.cleaned ?? data.topic ?? "").trim();
+    const topic = (data.topic ?? "").trim();
+    const keywords = data.keywords ?? [];
+    resultText.value = raw;
+    resultCleaned.value = cleaned;
+    resultTopic.value = topic;
+    resultKeywords.value = keywords;
+    history.value.unshift({ text: raw, cleaned, topic, keywords, sessionId: data.sessionId ?? null });
+    if (raw) {
+      resultText.value = raw;
     } else {
       isEmptyWarning.value = true;
     }
