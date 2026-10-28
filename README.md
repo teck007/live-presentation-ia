@@ -1,17 +1,26 @@
-# Transcripcion de voz en vivo
+# Live Presentation — transcripción en vivo + slides con IA
 
-Proxy simple para transcribir voz en español con la API de Meta Muse Voice Transcribe,
-sin exponer la API key en el frontend.
+Transcripción en tiempo real y generación de slides en formato JSON mediante un modelo de lenguaje (LLM).
 
 ## Arquitectura
 
-- **Backend (FastAPI):** recibe el audio del navegador, lo convierte a WAV mono
-  16-bit PCM 24 kHz con ffmpeg y lo reenvia a Meta. La key `MODEL_API_KEY`
-  solo existe en el backend.
-- **Frontend (Vue 3 + Vite + TypeScript):** micrófono, botón Transcribir y texto. Nunca maneja la key.
+- **Realtime WS `/ws/transcribe`:** el frontend envía PCM a 24 kHz y el backend lo reenvía a Meta. `enrich_event` agrega `topic`, `keywords` y `cleaned` a cada evento.
+- **Fallback `POST /api/transcribe`:** recibe audio en `multipart/form-data`, lo convierte con ffmpeg a WAV mono de 16-bit a 24 kHz. Límite de 32 MB por archivo.
+- **Generación de slides `POST /api/presentations/generate`:** recibe `{transcript, topic, keywords}` y devuelve `{layout, title, text, bullets, keywords, filtered}`.
+- **Frontend:** `App.vue` actúa como shell con `AppSidebar` (controles) y `SlideCanvas` (componentes en `slides/`). Los composables `useRealtimeTranscription` y `useLivePresentation` gestionan la conexión realtime con debounce de 4 s y deduplicación por `turnId`.
+
+La clave `MODEL_API_KEY` solo existe en el backend. El frontend nunca la utiliza.
 
 Motor: `muse-voice-transcribe-1.0`, endpoint `POST https://api.meta.ai/v1/asr/transcribe`.
-Modo `PUSH_TO_TALK`, sesgo de idioma español, sin diarizacion.
+Modo `PUSH_TO_TALK`, sesgo de idioma español, sin diarización.
+
+## Endpoints
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| WS | `/ws/transcribe` | Transcripción en tiempo real (PCM 24 kHz, eventos enriquecidos) |
+| POST | `/api/transcribe` | Transcripción de archivo (`multipart/form-data`, máx. 32 MB) |
+| POST | `/api/presentations/generate` | Generación de slide desde `{transcript, topic, keywords}` |
 
 ## Requisitos
 
@@ -22,7 +31,7 @@ Modo `PUSH_TO_TALK`, sesgo de idioma español, sin diarizacion.
   - Ubuntu/Debian: `sudo apt install ffmpeg`
 - Una API key de Meta con formato `LLM_...`
 
-## Instalacion
+## Instalación
 
 ```bash
 python3 -m venv .venv
@@ -30,7 +39,7 @@ source .venv/bin/activate
 pip install -r backend/requirements.txt
 pip install pytest
 cp .env.example .env
-# Edita .env y coloca tu key real en MODEL_API_KEY
+# Editar .env y colocar la key real en MODEL_API_KEY
 ```
 
 Frontend:
@@ -38,11 +47,11 @@ Frontend:
 ```bash
 cd frontend
 cp .env.example .env
-# Edita .env y ajusta VITE_API_BASE_URL si el backend no corre en http://localhost:8000
+# Editar .env y ajustar VITE_API_BASE_URL si el backend no corre en http://localhost:8000
 npm install
 ```
 
-## Como correrlo
+## Cómo correrlo
 
 Terminal 1 (backend):
 
@@ -58,34 +67,34 @@ cd frontend
 npm run dev
 ```
 
-Abre el navegador en http://localhost:5173, graba tu voz y presiona **Transcribir**.
+Abrir el navegador en http://localhost:5173, grabar la voz y presionar **Transcribir**.
 
 > Nota: el micrófono requiere servir la app en `localhost` o bajo HTTPS.
 > Safari no soporta `audio/webm`; en ese caso el frontend graba en MP4
 > (`audio/mp4`) y el backend lo convierte igual con ffmpeg.
 
-## Como conseguir la key
+## Cómo conseguir la key
 
-1. Entra al portal de desarrolladores de Meta y crea un proyecto con acceso a Muse Voice.
-2. Genera una API key (empieza con `LLM_...`).
-3. Copiala en `.env` como `MODEL_API_KEY=LLM_...`. Nunca la pongas en el frontend.
+1. Entrar al portal de desarrolladores de Meta y crear un proyecto con acceso a Muse Voice.
+2. Generar una API key (empieza con `LLM_...`).
+3. Copiarla en `.env` como `MODEL_API_KEY=LLM_...`. Nunca incluirla en el frontend.
 
-## Limites y costo
+## Límites y costo
 
-- Tamaño maximo por archivo: **32 MB** (el backend responde 413 si se supera).
-- Duracion maxima aproximada: **10 minutos** por pedido.
+- Tamaño máximo por archivo: **32 MB** (el backend responde 413 si se supera).
+- Duración máxima aproximada: **10 minutos** por pedido.
 - Costo de referencia: **$0.18 por hora** de audio transcrito.
 - Formato requerido por Meta: **WAV**. El navegador suele enviar otro formato,
-  por eso el backend lo convierte automaticamente con ffmpeg.
+  por eso el backend lo convierte automáticamente con ffmpeg.
 
 ## Variables de entorno
 
-| Variable        | Default                                    | Descripcion                  |
-|---------------|--------------------------------------------|------------------------------|
-| MODEL_API_KEY | (vacia)                                    | Key `LLM_...`, solo backend |
-| META_ASR_URL  | https://api.meta.ai/v1/asr/transcribe      | Endpoint de Meta             |
-| ASR_MODEL     | muse-voice-transcribe-1.0                  | Modelo de transcripcion      |
-| VITE_API_BASE_URL | http://localhost:8000                  | URL del backend (frontend, archivo `frontend/.env`) |
+| Variable | Default | Descripción |
+|---|---|---|
+| MODEL_API_KEY | (vacía) | Key `LLM_...`, solo backend. Nunca exponer en el frontend |
+| META_ASR_URL | https://api.meta.ai/v1/asr/transcribe | Endpoint de Meta |
+| ASR_MODEL | muse-voice-transcribe-1.0 | Modelo de transcripción |
+| VITE_API_BASE_URL | http://localhost:8000 | URL del backend (frontend, archivo `frontend/.env`) |
 
 ## Tests
 
@@ -93,4 +102,10 @@ Abre el navegador en http://localhost:5173, graba tu voz y presiona **Transcribi
 source .venv/bin/activate
 pytest backend/test_main.py -v
 ```
-# live-presentation-ia
+
+Build del frontend:
+
+```bash
+cd frontend
+npm run build
+```
