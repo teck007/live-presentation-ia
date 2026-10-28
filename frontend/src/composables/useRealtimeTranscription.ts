@@ -98,14 +98,34 @@ export function useRealtimeTranscription() {
     return turn;
   }
 
-  function finalizeTurn(turnId: string, text: string) {
+  function hasFinalTurn(turnId: string): boolean {
+    return finalItems.value.some((item) => item.sessionId === turnId);
+  }
+
+  function finalizeTurn(
+    turnId: string,
+    text: string,
+    enriched?: { cleaned?: string | null; topic?: string | null; keywords?: string[] },
+  ) {
     const turn = touchTurn(turnId);
     turn.text = text;
     turn.final = true;
     turn.updatedAt = Date.now();
+    if (enriched) {
+      turn.cleaned = enriched.cleaned ?? null;
+      turn.topic = enriched.topic ?? null;
+      turn.keywords = enriched.keywords ?? [];
+    }
     const clean = text.trim();
-    if (clean) {
-      finalItems.value.unshift({ text: clean, sessionId: turnId });
+    // Dedupe opción B: si el transcript final=true ya pusheó este turnId, no duplicar.
+    if (clean && !hasFinalTurn(turnId)) {
+      finalItems.value.unshift({
+        text: clean,
+        sessionId: turnId,
+        cleaned: turn.cleaned ?? enriched?.cleaned ?? null,
+        topic: turn.topic ?? enriched?.topic ?? null,
+        keywords: turn.keywords ?? enriched?.keywords ?? [],
+      });
     }
   }
 
@@ -126,8 +146,19 @@ export function useRealtimeTranscription() {
         turn.final = event.final ?? false;
         turn.updatedAt = Date.now();
         if (turn.final) {
+          turn.cleaned = event.cleaned ?? null;
+          turn.topic = event.topic ?? null;
+          turn.keywords = event.keywords ?? [];
           const clean = turn.text.trim();
-          if (clean) finalItems.value.unshift({ text: clean, sessionId: target });
+          // Dedupe opción B: evita duplicar si speechComplete ya lo registró.
+          if (clean && !hasFinalTurn(target))
+            finalItems.value.unshift({
+              text: clean,
+              sessionId: target,
+              cleaned: turn.cleaned,
+              topic: turn.topic,
+              keywords: turn.keywords,
+            });
         }
         break;
       }
@@ -138,7 +169,11 @@ export function useRealtimeTranscription() {
         break;
       }
       case "speechComplete": {
-        finalizeTurn(event.turnId, event.transcript ?? "");
+        finalizeTurn(event.turnId, event.transcript ?? "", {
+          cleaned: event.cleaned,
+          topic: event.topic,
+          keywords: event.keywords,
+        });
         if (lastActiveTurnId === event.turnId) lastActiveTurnId = null;
         break;
       }

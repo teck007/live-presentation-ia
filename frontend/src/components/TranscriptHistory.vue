@@ -7,6 +7,15 @@
     <ol class="list-decimal space-y-2 pl-5">
       <li v-for="(item, index) in items" :key="index">
         <p>{{ item.text }}</p>
+        <div v-if="item.keywords?.length" class="mt-1 flex flex-wrap gap-1.5">
+          <span
+            v-for="(keyword, kIndex) in item.keywords"
+            :key="`${keyword}-${kIndex}`"
+            class="rounded-full bg-neutral-200 px-2.5 py-0.5 text-xs font-medium text-neutral-700"
+          >
+            {{ keyword }}
+          </span>
+        </div>
         <small v-if="item.sessionId" class="text-sm text-neutral-500"
           >sessionId: {{ item.sessionId }}</small
         >

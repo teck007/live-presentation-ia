@@ -98,6 +98,29 @@ def is_voiced(frame: bytes, threshold: float) -> bool:
     return frame_rms(frame) >= threshold
 
 
+def enrich_event(obj: dict) -> dict:
+    """Add cleaned/topic/keywords to final transcript events (additive only)."""
+    try:
+        # Lazy import: top-level would cycle via backend.presentation_api.__init__
+        # (controllers.transcription imports handle_frontend_socket from here).
+        from backend.presentation_api.utils.topic_cleaner import analyze_topic
+
+        t = obj.get("type")
+        if t == "speechComplete":
+            raw = obj.get("transcript") or ""
+            if isinstance(raw, str) and raw.strip():
+                a = analyze_topic(raw)
+                obj = {**obj, "cleaned": a["cleaned"], "topic": a["topic"], "keywords": a["keywords"]}
+        elif t == "transcript" and obj.get("final") is True:
+            raw = obj.get("transcript") or ""
+            if isinstance(raw, str) and raw.strip():
+                a = analyze_topic(raw)
+                obj = {**obj, "cleaned": a["cleaned"], "topic": a["topic"], "keywords": a["keywords"]}
+    except Exception:  # noqa: BLE001
+        pass
+    return obj
+
+
 def build_handshake(api_key: str, model: str) -> str:
     return json.dumps(
         {
@@ -212,7 +235,7 @@ class RealtimeBridge:
                 if isinstance(message, bytes):
                     continue  # eventos son JSON text; ignora binarios
                 try:
-                    await self.send_front(json.loads(message))
+                    await self.send_front(enrich_event(json.loads(message)))
                 except Exception:  # noqa: BLE001
                     # Si el frontend se cerro, termina el relay.
                     break
@@ -268,7 +291,7 @@ class RealtimeBridge:
                         if isinstance(message, bytes):
                             continue
                         try:
-                            await self.send_front(json.loads(message))
+                            await self.send_front(enrich_event(json.loads(message)))
                         except Exception:  # noqa: BLE001
                             break
                 except Exception:  # noqa: BLE001

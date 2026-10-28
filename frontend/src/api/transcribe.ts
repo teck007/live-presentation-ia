@@ -53,6 +53,11 @@ export async function transcribeAudio(
       sessionId: data.sessionId ?? null,
       audioDurationMs: data.audioDurationMs ?? null,
       turns: Array.isArray(data.turns) ? data.turns : [],
+      topic: typeof data.topic === "string" ? data.topic : null,
+      cleaned: typeof data.cleaned === "string" ? data.cleaned : null,
+      keywords: Array.isArray(data.keywords)
+        ? data.keywords.filter((k): k is string => typeof k === "string")
+        : [],
     };
   } catch (error) {
     // Mensaje claro si el pedido fue abortado por timeout.
