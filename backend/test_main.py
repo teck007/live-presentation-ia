@@ -8,7 +8,8 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-import backend.main as main
+import backend.presentation_api.controllers.transcription as transcription
+from backend.presentation_api import app
 
 
 def generar_wav_1s() -> bytes:
@@ -44,7 +45,7 @@ class FakeResponse:
 @pytest.fixture
 def client_sin_key(monkeypatch):
     monkeypatch.delenv("MODEL_API_KEY", raising=False)
-    return TestClient(main.app)
+    return TestClient(app)
 
 
 def test_health_sin_key(client_sin_key):
@@ -67,7 +68,7 @@ def test_transcribe_sin_key_da_503(client_sin_key):
 
 def test_transcribe_ok_mockeado(monkeypatch):
     monkeypatch.setenv("MODEL_API_KEY", "LLM_test")
-    client = TestClient(main.app)
+    client = TestClient(app)
     wav = generar_wav_1s()
 
     fake = FakeResponse(
@@ -82,7 +83,7 @@ def test_transcribe_ok_mockeado(monkeypatch):
     mock_post = AsyncMock(return_value=fake)
 
     with (
-        patch.object(main, "convert_audio_bytes", return_value=wav),
+        patch.object(transcription, "convert_audio_bytes", return_value=wav),
         patch("httpx.AsyncClient.post", mock_post),
     ):
         resp = client.post(
@@ -104,14 +105,14 @@ def test_transcribe_ok_mockeado(monkeypatch):
 
 def test_error_meta_propagado(monkeypatch):
     monkeypatch.setenv("MODEL_API_KEY", "LLM_test")
-    client = TestClient(main.app)
+    client = TestClient(app)
     wav = generar_wav_1s()
 
     fake = FakeResponse(429, {"error": "rate limited"}, text='{"error":"rate limited"}')
     mock_post = AsyncMock(return_value=fake)
 
     with (
-        patch.object(main, "convert_audio_bytes", return_value=wav),
+        patch.object(transcription, "convert_audio_bytes", return_value=wav),
         patch("httpx.AsyncClient.post", mock_post),
     ):
         resp = client.post(
@@ -125,6 +126,6 @@ def test_error_meta_propagado(monkeypatch):
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg no instalado")
 def test_conversion_real_si_ffmpeg_existe():
     wav = generar_wav_1s()
-    out = main.convert_audio_bytes(wav)
+    out = transcription.convert_audio_bytes(wav)
     # Un WAV valido empieza con RIFF.
     assert out[:4] == b"RIFF"

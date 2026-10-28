@@ -1,4 +1,4 @@
-"""Backend FastAPI: proxy que oculta MODEL_API_KEY y llama a Meta Muse Voice Transcribe API."""
+"""Controller transcription: proxy que oculta MODEL_API_KEY y llama a Meta Muse Voice Transcribe API."""
 import json
 import os
 import shutil
@@ -6,13 +6,12 @@ import subprocess
 import tempfile
 
 import httpx
-from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import APIRouter, File, HTTPException, UploadFile, WebSocket
+from backend.presentation_api.utils.topic_cleaner import analyze_topic, clean_topic
 
 from backend.realtime_proxy import handle_frontend_socket
 
-load_dotenv()
+router = APIRouter(tags=["transcription"])
 
 META_ASR_URL_DEFAULT = "https://api.meta.ai/v1/asr/transcribe"
 ASR_MODEL_DEFAULT = "muse-voice-transcribe-1.0"
@@ -31,18 +30,7 @@ def get_asr_model() -> str:
     return os.getenv("ASR_MODEL", ASR_MODEL_DEFAULT).strip()
 
 
-app = FastAPI(title="Live Presentation - Transcribe Proxy")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.get("/health")
+@router.get("/health")
 def health():
     """Estado del servicio. No expone la key, solo si esta configurada."""
     return {
@@ -127,7 +115,7 @@ def extract_text(payload: dict) -> str:
     return ""
 
 
-@app.post("/api/transcribe")
+@router.post("/api/transcribe")
 async def transcribe(file: UploadFile = File(...)):
     api_key = get_api_key()
     if not api_key:
@@ -190,15 +178,20 @@ async def transcribe(file: UploadFile = File(...)):
     except Exception:  # noqa: BLE001
         raise HTTPException(status_code=502, detail="Meta ASR devolvio una respuesta no JSON.")
 
+    raw_text = extract_text(payload)
+    analysis = analyze_topic(raw_text)
     return {
-        "text": extract_text(payload),
+        "text": raw_text,
+        "topic": analysis["topic"],
+        "keywords": analysis["keywords"],
+        "cleaned": analysis["cleaned"],
         "sessionId": payload.get("sessionId") or payload.get("session_id"),
         "audioDurationMs": payload.get("audioDurationMs") or payload.get("audio_duration_ms"),
         "turns": payload.get("turns") or [],
     }
 
 
-@app.websocket("/ws/transcribe")
+@router.websocket("/ws/transcribe")
 async def ws_transcribe(websocket: WebSocket):
     """Proxy realtime: PCM 24k del frontend hacia Meta, eventos de vuelta.
 

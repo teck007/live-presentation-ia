@@ -48,7 +48,7 @@ Terminal 1 (backend):
 
 ```bash
 source .venv/bin/activate
-uvicorn backend.main:app --port 8000
+uvicorn backend.presentation_api:app --port 8000
 ```
 
 Terminal 2 (frontend):
